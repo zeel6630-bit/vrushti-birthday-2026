@@ -1,0 +1,19 @@
+# Historical backups — never publish
+.gift18-backups/
+.home-nav-backup-*/
+.music-persistence-backup-*/
+pages/.gift*.before-shell-redirect-*/
+pages/*.backup*
+index.html.before-*
+*:Zone.Identifier
+
+# Development notes / historical notes
+V10_NOTES.txt
+V11_NOTES.txt
+V12_NOTES.txt
+V12_BALLOON_SPACING_NOTES.txt
+V12_INDEX_HOME_FONT_REFINEMENT_NOTES.txt
+V12_NOTES.txt
+
+# Placeholder music instruction
+music/PUT-YOUR-MP3-HERE.txt

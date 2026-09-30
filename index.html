@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Private Birthday Universe</title>
+
+<style>
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+#birthdayFrame {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    background: #000;
+}
+
+#musicControl {
+    position: fixed;
+    left: 22px;
+    bottom: 22px;
+    z-index: 2147483647;
+
+    width: 54px;
+    height: 54px;
+
+    border: 1px solid rgba(255,255,255,.32);
+    border-radius: 50%;
+
+    background: rgba(12,12,20,.82);
+    backdrop-filter: blur(14px);
+
+    color: #fff;
+    display: grid;
+    place-items: center;
+
+    cursor: pointer;
+
+    box-shadow:
+        0 8px 30px rgba(0,0,0,.45);
+
+    font-size: 21px;
+    line-height: 1;
+
+    transition:
+        transform .18s ease,
+        background .18s ease,
+        box-shadow .18s ease;
+}
+
+#musicControl:hover {
+    transform: scale(1.07);
+    background: rgba(30,30,45,.92);
+}
+
+#musicControl:active {
+    transform: scale(.95);
+}
+
+#musicControl.playing {
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.12),
+        0 0 28px rgba(255,120,210,.38);
+}
+
+#musicStatus {
+    position: fixed;
+    left: 22px;
+    bottom: 84px;
+    z-index: 2147483647;
+
+    padding: 7px 10px;
+    border-radius: 10px;
+
+    background: rgba(0,0,0,.68);
+    color: #fff;
+
+    font:
+        500 11px/1.2
+        system-ui,
+        sans-serif;
+
+    opacity: 0;
+    pointer-events: none;
+
+    transition: opacity .2s ease;
+}
+
+#musicStatus.show {
+    opacity: 1;
+}
+</style>
+</head>
+
+<body>
+
+<!--
+    THIS iframe contains the existing password page and every existing
+    birthday page.
+
+    The iframe changes pages.
+    THIS parent document never changes.
+
+    Therefore this parent owns the audio and the audio never gets destroyed.
+-->
+<iframe
+    id="birthdayFrame"
+    src="password-gate.html"
+    title="Private Birthday Universe">
+</iframe>
+
+<button
+    id="musicControl"
+    type="button"
+    aria-label="Play music"
+    title="Play music">
+    ▶
+</button>
+
+<div id="musicStatus">Music stopped</div>
+
+<audio
+    id="persistentMusic"
+    src="music/song.mp3"
+    preload="auto"
+    loop>
+</audio>
+
+<script>
+(function () {
+
+    const frame = document.getElementById("birthdayFrame");
+    const button = document.getElementById("musicControl");
+    const audio = document.getElementById("persistentMusic");
+    const status = document.getElementById("musicStatus");
+
+    const STORAGE_KEY = "birthday-persistent-music-state-v1";
+
+    /*
+     * If somebody directly visits:
+     *
+     * /pages/gift08.html
+     *
+     * the page guard redirects to:
+     *
+     * /index.html?open=pages/gift08.html
+     *
+     * Password is still required before that requested page is opened.
+     */
+    const requestedPage =
+        new URLSearchParams(window.location.search).get("open");
+
+    function updateButton() {
+
+        const playing = !audio.paused;
+
+        button.textContent = playing ? "■" : "▶";
+
+        button.setAttribute(
+            "aria-label",
+            playing ? "Stop music" : "Play music"
+        );
+
+        button.title =
+            playing ? "Stop music" : "Play music";
+
+        button.classList.toggle("playing", playing);
+    }
+
+    function showStatus(text) {
+
+        status.textContent = text;
+        status.classList.add("show");
+
+        clearTimeout(showStatus.timer);
+
+        showStatus.timer = setTimeout(function () {
+            status.classList.remove("show");
+        }, 1100);
+    }
+
+    async function playMusic() {
+
+        try {
+
+            await audio.play();
+
+            localStorage.setItem(
+                STORAGE_KEY,
+                "playing"
+            );
+
+            showStatus("Music playing");
+
+        } catch (error) {
+
+            showStatus("Tap again to play");
+        }
+
+        updateButton();
+    }
+
+    function stopMusic() {
+
+        audio.pause();
+
+        /*
+         * "Stop" means stop completely, not merely pause.
+         * The next click starts from the beginning.
+         */
+        audio.currentTime = 0;
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            "stopped"
+        );
+
+        showStatus("Music stopped");
+
+        updateButton();
+    }
+
+    button.addEventListener("click", function () {
+
+        if (audio.paused) {
+            playMusic();
+        } else {
+            stopMusic();
+        }
+
+    });
+
+    audio.addEventListener("play", updateButton);
+    audio.addEventListener("pause", updateButton);
+    audio.addEventListener("ended", updateButton);
+
+    /*
+     * IMPORTANT:
+     *
+     * When the iframe navigates from:
+     *
+     * birthday.html
+     * -> birthday-reveal.html
+     * -> message.html
+     * -> home.html
+     * -> gift01.html
+     * -> gift02.html
+     * ...
+     *
+     * this function does NOT touch the audio.
+     *
+     * The audio belongs to the parent and therefore keeps playing.
+     */
+    frame.addEventListener("load", function () {
+
+        /*
+         * IMPORTANT:
+         *
+         * The child birthday document must remain untouched.
+         *
+         * The parent owns ONLY:
+         *   - persistent music
+         *   - iframe navigation
+         *
+         * Do NOT remove elements from the child DOM here.
+         * Earlier cleanup code was too broad and could remove
+         * legitimate birthday-page elements.
+         */
+
+        try {
+
+            const doc = frame.contentDocument;
+
+            if (!doc) {
+                return;
+            }
+
+            /*
+             * Keep local HTML navigation inside the iframe.
+             *
+             * No internal page is allowed to replace index.html.
+             */
+            doc.addEventListener(
+                "click",
+                function (event) {
+
+                    const link =
+                        event.target.closest &&
+                        event.target.closest("a[href]");
+
+                    if (!link) {
+                        return;
+                    }
+
+                    const rawHref =
+                        link.getAttribute("href");
+
+                    if (!rawHref) {
+                        return;
+                    }
+
+                    /*
+                     * Leave anchors, external links, mail links,
+                     * telephone links, javascript links, etc. alone.
+                     */
+                    if (
+                        rawHref.startsWith("#") ||
+                        /^(https?:|mailto:|tel:|javascript:)/i.test(rawHref)
+                    ) {
+                        return;
+                    }
+
+                    const targetURL =
+                        new URL(
+                            rawHref,
+                            doc.baseURI
+                        );
+
+                    if (
+                        targetURL.origin !== window.location.origin
+                    ) {
+                        return;
+                    }
+
+                    if (!/\.html?$/i.test(targetURL.pathname)) {
+                        return;
+                    }
+
+                    /*
+                     * Local birthday navigation stays inside
+                     * the permanent iframe.
+                     */
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    frame.src = targetURL.href;
+
+                },
+                true
+            );
+
+        } catch (error) {
+            /*
+             * Never allow iframe inspection/navigation errors
+             * to affect the persistent music.
+             */
+        }
+
+        /*
+         * CRITICAL:
+         *
+         * Navigation does NOT modify music state.
+         */
+        updateButton();
+
+        /*
+         * If somebody directly requested a specific child page,
+         * wait until the password gate has successfully navigated
+         * to birthday.html, then open the requested page.
+         *
+         * We never skip the password gate.
+         */
+        if (
+            requestedPage &&
+            requestedPage !== "pages/birthday.html" &&
+            frame.contentWindow
+        ) {
+
+            try {
+
+                const currentPath =
+                    frame.contentWindow.location.pathname;
+
+                if (
+                    currentPath.endsWith("/pages/birthday.html")
+                ) {
+
+                    const destination =
+                        new URL(
+                            requestedPage,
+                            window.location.href
+                        );
+
+                    frame.src = destination.href;
+                }
+
+            } catch (error) {}
+
+        }
+
+    });
+
+    /*
+     * Restore only the remembered PLAY/STOP preference.
+     *
+     * We intentionally do NOT autoplay here.
+     * The first actual Play click remains a user gesture.
+     */
+    updateButton();
+
+})();
+</script>
+
+</body>
+</html>
